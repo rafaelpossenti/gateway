@@ -16,6 +16,9 @@
 //    val logger = LoggerFactory.getLogger(MyPreFilter::class.java)
 //
 //    override fun filter(exchange: ServerWebExchange, chain: GatewayFilterChain): Mono<Void> {
+//
+//
+//
 //        logger.info("My first Pre-filter is executed...")
 //        val requestPath = exchange.request.path.toString()
 //        logger.info("Request path = $requestPath")

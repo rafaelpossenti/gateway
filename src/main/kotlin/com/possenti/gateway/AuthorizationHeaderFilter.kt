@@ -4,7 +4,6 @@ import com.google.common.net.HttpHeaders
 import io.jsonwebtoken.Jwts
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.cloud.gateway.filter.GatewayFilter
-import org.springframework.cloud.gateway.filter.GatewayFilterChain
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory
 import org.springframework.core.env.Environment
 import org.springframework.http.HttpStatus
@@ -21,17 +20,21 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
     }
 
     override fun apply(config: Config): GatewayFilter {
-        return label@ GatewayFilter { exchange: ServerWebExchange, chain: GatewayFilterChain ->
-            val request = exchange.request
-            if (!request.headers.containsKey(HttpHeaders.AUTHORIZATION)) {
+        return label@GatewayFilter { exchange, chain ->
+
+            val token = exchange.request.headers[HttpHeaders.AUTHORIZATION]?.firstOrNull()
+
+            if (token.isNullOrBlank())
                 return@GatewayFilter onError(exchange, "No authorization header", HttpStatus.UNAUTHORIZED)
-            }
-            val authorizationHeader = request.headers[HttpHeaders.AUTHORIZATION]!![0]
-            val jwt = authorizationHeader.replace("Bearer", "")
-            if (!isJwtValid(jwt)) {
+
+            val jwt = token.replace("Bearer", "")
+            if (isJwtValid(jwt).not())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
-            }
-            chain.filter(exchange)
+
+
+            val newExchange = addUserEmailHeader(jwt, exchange)
+
+            chain.filter(newExchange)
         }
     }
 
@@ -45,8 +48,7 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
         var returnValue = true
         var subject: String? = null
         try {
-            subject = Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body
-                    .subject
+            subject = getSubjectFromToken(jwt)
         } catch (ex: Exception) {
             returnValue = false
         }
@@ -55,4 +57,14 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
         }
         return returnValue
     }
+
+    private fun addUserEmailHeader(jwt: String, exchange: ServerWebExchange) : ServerWebExchange{
+        val subject = getSubjectFromToken(jwt)
+        val newRequest = exchange.request.mutate().header("x-user-email", subject).build()
+        return exchange.mutate().request(newRequest).build()
+    }
+
+    private fun getSubjectFromToken(jwt: String) = Jwts.parser().setSigningKey(env!!.getProperty("token.secret"))
+            .parseClaimsJws(jwt).body.subject
+
 }
