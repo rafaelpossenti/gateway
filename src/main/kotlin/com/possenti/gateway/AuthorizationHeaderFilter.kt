@@ -20,19 +20,21 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
     }
 
     override fun apply(config: Config): GatewayFilter {
-        return label@GatewayFilter { exchange, chain ->
+        return label@ GatewayFilter { exchange, chain ->
 
             val token = exchange.request.headers[HttpHeaders.AUTHORIZATION]?.firstOrNull()
 
             if (token.isNullOrBlank())
                 return@GatewayFilter onError(exchange, "No authorization header", HttpStatus.UNAUTHORIZED)
 
-            val jwt = token.replace("Bearer", "")
-            if (isJwtValid(jwt).not())
+            if (token.startsWith("Bearer").not())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
+            val subject = getSubjectFromToken(token)
+            if (subject.isNullOrEmpty())
+                return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
-            val newExchange = addUserEmailHeader(jwt, exchange)
+            val newExchange = addUserEmailHeader(subject, exchange)
 
             chain.filter(newExchange)
         }
@@ -44,27 +46,14 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
         return response.setComplete()
     }
 
-    private fun isJwtValid(jwt: String): Boolean {
-        var returnValue = true
-        var subject: String? = null
-        try {
-            subject = getSubjectFromToken(jwt)
-        } catch (ex: Exception) {
-            returnValue = false
-        }
-        if (subject == null || subject.isEmpty()) {
-            returnValue = false
-        }
-        return returnValue
-    }
-
-    private fun addUserEmailHeader(jwt: String, exchange: ServerWebExchange) : ServerWebExchange{
-        val subject = getSubjectFromToken(jwt)
+    private fun addUserEmailHeader(subject: String, exchange: ServerWebExchange): ServerWebExchange {
         val newRequest = exchange.request.mutate().header("x-user-email", subject).build()
         return exchange.mutate().request(newRequest).build()
     }
 
-    private fun getSubjectFromToken(jwt: String) = Jwts.parser().setSigningKey(env!!.getProperty("token.secret"))
-            .parseClaimsJws(jwt).body.subject
+    private fun getSubjectFromToken(token: String) = kotlin.runCatching {
+        val jwt = token.replace("Bearer", "")
+        Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body.subject
+    }.getOrNull()
 
 }
