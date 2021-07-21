@@ -10,6 +10,9 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
 import org.springframework.web.server.ServerWebExchange
 import reactor.core.publisher.Mono
+import java.time.Instant
+import java.time.LocalDateTime
+import java.util.*
 
 @Component
 class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHeaderFilter.Config>(Config::class.java) {
@@ -30,11 +33,14 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
             if (token.startsWith("Bearer").not())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
-            val subject = getSubjectFromToken(token)
-            if (subject.isNullOrEmpty())
+            val jwtBody = getSubjectFromToken(token)
+            if (jwtBody?.subject.isNullOrEmpty())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
-            val newExchange = addUserEmailHeader(subject, exchange)
+            if (Date.from(Instant.now()).after(jwtBody?.expiration))
+                return@GatewayFilter onError(exchange, "JWT token is expired", HttpStatus.UNAUTHORIZED)
+
+            val newExchange = addUserEmailHeader(jwtBody!!.subject, exchange)
 
             chain.filter(newExchange)
         }
@@ -53,7 +59,7 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
 
     private fun getSubjectFromToken(token: String) = kotlin.runCatching {
         val jwt = token.replace("Bearer", "")
-        Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body.subject
+        Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body
     }.getOrNull()
 
 }
