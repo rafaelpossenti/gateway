@@ -58,5 +58,15 @@ spring:
                 - RewritePath=/post/(?<segment>.*), /${segment}
                 - AuthorizationHeaderFilter
 
+            -   id: post-ws-actuator
+                uri: http://localhost:8081
+                predicates:
+                - Path=/post/actuator/*
+                - Method=GET
+                filters:
+                - RemoveRequestHeader=Cookie
+                - RewritePath=/post/(?<segment>.*), /${segment}
+                - AuthorizationHeaderFilter
+
 token:
     secret: hfgry463hf746hf573ydh475fhy5739
