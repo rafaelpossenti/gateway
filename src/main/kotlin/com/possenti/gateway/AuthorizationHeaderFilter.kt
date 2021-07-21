@@ -33,14 +33,11 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
             if (token.startsWith("Bearer").not())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
-            val jwtBody = getSubjectFromToken(token)
-            if (jwtBody?.subject.isNullOrEmpty())
+            val subject = getSubjectFromToken(token)
+            if (subject.isNullOrEmpty())
                 return@GatewayFilter onError(exchange, "JWT token is not valid", HttpStatus.UNAUTHORIZED)
 
-            if (Date.from(Instant.now()).after(jwtBody?.expiration))
-                return@GatewayFilter onError(exchange, "JWT token is expired", HttpStatus.UNAUTHORIZED)
-
-            val newExchange = addUserEmailHeader(jwtBody!!.subject, exchange)
+            val newExchange = addUserEmailHeader(subject, exchange)
 
             chain.filter(newExchange)
         }
@@ -59,7 +56,7 @@ class AuthorizationHeaderFilter : AbstractGatewayFilterFactory<AuthorizationHead
 
     private fun getSubjectFromToken(token: String) = kotlin.runCatching {
         val jwt = token.replace("Bearer", "")
-        Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body
+        Jwts.parser().setSigningKey(env!!.getProperty("token.secret")).parseClaimsJws(jwt).body.subject
     }.getOrNull()
 
 }
